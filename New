@@ -1,0 +1,204 @@
+-- DevPanelClient
+-- Only visible to abgreplicationerr
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+local openEvent = ReplicatedStorage:WaitForChild("OpenDevPanel")
+local announceEvent = ReplicatedStorage:WaitForChild("GlobalAnnouncement")
+local announceRequest = ReplicatedStorage:WaitForChild("SendAnnouncement")
+
+-- helper to make a frame draggable
+local function makeDraggable(frame)
+	local dragging, dragInput, startPos, startMousePos
+
+	local function update(input)
+		local delta = input.Position - startMousePos
+		frame.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			startMousePos = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	frame.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			update(input)
+		end
+	end)
+end
+
+-- build the dev panel
+local function buildPanel(data)
+	-- prevent multiple panels
+	if player.PlayerGui:FindFirstChild("DevPanel") then return end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "DevPanel"
+	gui.ResetOnSpawn = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 320, 0, 220)
+	frame.Position = UDim2.new(0, 20, 0, 60)
+	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	frame.BackgroundTransparency = 0.2
+	frame.BorderColor3 = Color3.fromRGB(80, 255, 255)
+	frame.Parent = gui
+	makeDraggable(frame)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, 0, 0, 30)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextScaled = true
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Text = "abgreplicationerr's Dev Panel"
+	title.Parent = frame
+
+	local welcome = Instance.new("TextLabel")
+	welcome.Size = UDim2.new(1, -20, 0, 30)
+	welcome.Position = UDim2.new(0, 10, 0, 40)
+	welcome.BackgroundTransparency = 1
+	welcome.Font = Enum.Font.Gotham
+	welcome.TextScaled = true
+	welcome.TextColor3 = Color3.fromRGB(150, 255, 150)
+	welcome.Text = data.message or "Welcome"
+	welcome.Parent = frame
+
+	local uptime = Instance.new("TextLabel")
+	uptime.Size = UDim2.new(1, -20, 0, 30)
+	uptime.Position = UDim2.new(0, 10, 0, 80)
+	uptime.BackgroundTransparency = 1
+	uptime.Font = Enum.Font.Gotham
+	uptime.TextScaled = true
+	uptime.TextColor3 = Color3.fromRGB(255, 255, 255)
+	uptime.Parent = frame
+
+	-- update uptime
+	task.spawn(function()
+		while gui.Parent do
+			local seconds = math.floor(tick() - (data.startTime or tick()))
+			local mins = math.floor(seconds / 60)
+			local secs = seconds % 60
+			uptime.Text = string.format("Uptime: %02dm %02ds", mins, secs)
+			task.wait(1)
+		end
+	end)
+
+	-- Announcement section
+	local announceLabel = Instance.new("TextLabel")
+	announceLabel.Size = UDim2.new(1, -20, 0, 25)
+	announceLabel.Position = UDim2.new(0, 10, 0, 120)
+	announceLabel.BackgroundTransparency = 1
+	announceLabel.Font = Enum.Font.GothamBold
+	announceLabel.TextScaled = true
+	announceLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+	announceLabel.Text = "Announcement:"
+	announceLabel.Parent = frame
+
+	local announceBox = Instance.new("TextBox")
+	announceBox.Size = UDim2.new(1, -20, 0, 30)
+	announceBox.Position = UDim2.new(0, 10, 0, 150)
+	announceBox.PlaceholderText = "Type update message..."
+	announceBox.Text = ""
+	announceBox.ClearTextOnFocus = false
+	announceBox.Font = Enum.Font.Gotham
+	announceBox.TextScaled = true
+	announceBox.TextColor3 = Color3.fromRGB(255,255,255)
+	announceBox.BackgroundColor3 = Color3.fromRGB(40,40,40)
+	announceBox.Parent = frame
+
+	local sendButton = Instance.new("TextButton")
+	sendButton.Size = UDim2.new(0, 100, 0, 30)
+	sendButton.Position = UDim2.new(0.5, -50, 0, 185)
+	sendButton.Text = "Announce"
+	sendButton.Font = Enum.Font.GothamBold
+	sendButton.TextScaled = true
+	sendButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+	sendButton.TextColor3 = Color3.fromRGB(255,255,255)
+	sendButton.Parent = frame
+
+	sendButton.MouseButton1Click:Connect(function()
+		local msg = announceBox.Text
+		if msg ~= "" then
+			announceRequest:FireServer(msg)
+			announceBox.Text = ""
+		end
+	end)
+end
+
+-- floating "Dev Panel" button
+if not player.PlayerGui:FindFirstChild("DevPanelButton") then
+	local buttonGui = Instance.new("ScreenGui")
+	buttonGui.Name = "DevPanelButton"
+	buttonGui.ResetOnSpawn = false
+	buttonGui.Parent = player:WaitForChild("PlayerGui")
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0, 100, 0, 40)
+	button.Position = UDim2.new(0, 20, 0, 20)
+	button.Text = "Dev Panel"
+	button.Font = Enum.Font.GothamBold
+	button.TextColor3 = Color3.fromRGB(255,255,255)
+	button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+	button.TextScaled = true
+	button.Parent = buttonGui
+
+	makeDraggable(button)
+
+	button.MouseButton1Click:Connect(function()
+		buildPanel({ startTime = tick(), message = "Welcome back, abgreplicationerr 👑" })
+	end)
+end
+
+-- open panel automatically when server signals
+openEvent.OnClientEvent:Connect(function(data)
+	if player.Name == "abgreplicationerr" then
+		buildPanel(data)
+	end
+end)
+
+-- broadcast announcements
+announceEvent.OnClientEvent:Connect(function(message)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AnnouncementBanner"
+	gui.ResetOnSpawn = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	local banner = Instance.new("TextLabel")
+	banner.Size = UDim2.new(1, 0, 0, 50)
+	banner.Position = UDim2.new(0, 0, 0, 0)
+	banner.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+	banner.TextColor3 = Color3.fromRGB(255, 255, 255)
+	banner.Font = Enum.Font.GothamBold
+	banner.TextScaled = true
+	banner.Text = "📢 " .. tostring(message)
+	banner.Parent = gui
+
+	task.wait(6)
+	gui:Destroy()
+end)
